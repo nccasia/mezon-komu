@@ -143,3 +143,26 @@ export enum ERequestAbsenceDayType {
   'command: *request offcustom ' +
   '```',
 }
+export enum ERequestW2Type {
+    CHANGEOFFICEREQUEST = 'changeofficerequest',
+    DEVICEREQUEST = 'devicerequest',
+    OFFICEEQUIPMENTREQUEST = 'officeequipmentrequest',
+    PROBATIONARYCONFIRMATIONREQUEST = 'probationaryconfirmationrequest',
+    WFHREQUEST = 'wfhrequest',
+    HELP = '```' +
+    'Change Office Request\n' +
+    'command: *w2 changeofficerequest\n' +
+    '\n' +
+    'Device Request\n' +
+    'command: *w2 devicerequest\n' +
+    '\n' +
+    'Office Equipment Request\n' +
+    'command: *w2 officeequipmentrequest\n' +
+    '\n' +
+    'Probationary Confirmation Request\n' +
+    'command: *w2 probationaryconfirmationrequest\n' +
+    '\n' +
+    'WFH Request\n' +
+    'command: *w2 wfhrequest ' +
+    '```',
+  }

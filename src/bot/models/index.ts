@@ -50,3 +50,4 @@ export { BetEventMezon } from './betEventMezon.entity';
 export { MezonTrackerStreaming } from './timeTrackerStreaming.entity';
 export { UnlockTimeSheet } from './unlockTimeSheet.entity';
 export { AbsenceDayRequest } from './absenceDayRequest.entity';
+export { W2Requests } from './w2Request.entity';

@@ -57,4 +57,5 @@ export const TABLE = {
   MEZON_TRACKER_STREAMING: 'komu_mezonTrackerStreaming',
   UNLOCK_TIMESHEET: 'komu_unlockTimeSheet',
   ABSENCE_DAY_REQUEST: 'komu_absenceDayRequest',
+  W2_REQUEST: 'w2_request'
 };

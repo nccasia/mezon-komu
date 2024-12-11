@@ -56,6 +56,7 @@ import {
   MezonTrackerStreaming,
   UnlockTimeSheet,
   AbsenceDayRequest,
+  W2Requests
 } from './models';
 import { BotGateway } from './events/bot.gateway';
 import { DailyCommand } from './asterisk-commands/commands/daily/daily.command';
@@ -148,6 +149,8 @@ import { UnlockTimeSheetCommand } from './asterisk-commands/commands/unlocktimes
 import { MusicCommand } from './asterisk-commands/commands/music/music.command';
 import { MusicService } from './services/music.services';
 import { RequestAbsenceDayCommand } from './asterisk-commands/commands/absencedayrequest/absenceday.command';
+import { W2RequestCommand } from './asterisk-commands/commands/w2Requests/W2Request.command';
+
 
 // import { CronjobSlashCommand } from "./slash-commands/cronjob.slashcommand";
 
@@ -212,6 +215,7 @@ import { RequestAbsenceDayCommand } from './asterisk-commands/commands/absenceda
       MezonTrackerStreaming,
       UnlockTimeSheet,
       AbsenceDayRequest,
+      W2Requests
     ]),
     HttpModule,
     ScheduleModule.forRoot(),
@@ -301,6 +305,7 @@ import { RequestAbsenceDayCommand } from './asterisk-commands/commands/absenceda
     StreamingEvent,
     UnlockTimeSheetCommand,
     RequestAbsenceDayCommand,
+    W2RequestCommand,
     DailyCommand,
   ],
   controllers: [KomubotrestController],

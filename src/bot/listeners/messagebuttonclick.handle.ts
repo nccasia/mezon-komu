@@ -7,7 +7,11 @@ import { MezonClientService } from 'src/mezon/services/client.service';
 import {
   EmbedProps,
   EMessageMode,
-  ERequestAbsenceDayStatus, ERequestAbsenceDayType,
+  ERequestAbsenceDateType,
+  ERequestAbsenceDayStatus,
+  ERequestAbsenceDayType,
+  ERequestAbsenceTime,
+  ERequestAbsenceType,
   EUnlockTimeSheet,
   EUnlockTimeSheetPayment,
   FFmpegImagePath,
@@ -15,7 +19,14 @@ import {
   MEZON_EMBED_FOOTER,
 } from '../constants/configs';
 import { MessageQueue } from '../services/messageQueue.service';
-import { Daily, Quiz, UnlockTimeSheet, User, UserQuiz } from '../models';
+import {
+  Daily,
+  Quiz,
+  UnlockTimeSheet,
+  User,
+  UserQuiz,
+  W2Requests,
+} from '../models';
 import { AbsenceDayRequest } from '../models';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -42,13 +53,17 @@ import {
 import { AxiosClientService } from '../services/axiosClient.services';
 import { ClientConfigService } from '../config/client-config.service';
 import {
-  handleBodyRequestAbsenceDay, validateAbsenceTime, validateAbsenceTypeDay,
+  handleBodyRequestAbsenceDay,
+  validateAbsenceTime,
+  validateAbsenceTypeDay,
   validateAndFormatDate,
-  validateHourAbsenceDay, validateTypeAbsenceDay,
+  validateHourAbsenceDay,
+  validateTypeAbsenceDay,
   validReasonAbsenceDay,
 } from '../utils/request-helper';
 import { OnEvent } from '@nestjs/event-emitter';
-
+import axios from 'axios';
+const https = require('https');
 @Injectable()
 export class MessageButtonClickedEvent extends BaseHandleEvent {
   constructor(
@@ -74,9 +89,12 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
     private absenceDayRequestRepository: Repository<AbsenceDayRequest>,
     private axiosClientService: AxiosClientService,
     private clientConfigService: ClientConfigService,
+    @InjectRepository(W2Requests)
+    private w2RequestsRepository: Repository<W2Requests>,
   ) {
     super(clientService);
   }
+
   @OnEvent(Events.MessageButtonClicked)
   async hanndleButtonForm(data) {
     const args = data.button_id.split('_');
@@ -578,7 +596,10 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
       // Parse button_id
       const args = data.button_id.split('_');
       const typeRequest = args[0];
-      const typeRequestDayEnum = ERequestAbsenceDayType[typeRequest as keyof typeof ERequestAbsenceDayType];
+      const typeRequestDayEnum =
+        ERequestAbsenceDayType[
+          typeRequest as keyof typeof ERequestAbsenceDayType
+        ];
       if (!data?.extra_data) return;
       // Find absence data
       const findAbsenceData = await this.absenceDayRequestRepository.findOne({
@@ -627,7 +648,10 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
               dataParse.dateType ? dataParse.dateType[0] : null,
               typeRequestDayEnum,
             );
-            const validReason = validReasonAbsenceDay(dataParse.reason, typeRequestDayEnum);
+            const validReason = validReasonAbsenceDay(
+              dataParse.reason,
+              typeRequestDayEnum,
+            );
             const validAbsenceType = validateAbsenceTypeDay(
               dataParse.absenceType ? dataParse.absenceType[0] : null,
               typeRequestDayEnum,
@@ -639,10 +663,16 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
             const userId = findAbsenceData.userId;
             const validations = [
               { valid: validDate.valid, message: validDate.message },
-              { valid: validAbsenceTime.valid, message: validAbsenceTime.message },
+              {
+                valid: validAbsenceTime.valid,
+                message: validAbsenceTime.message,
+              },
               { valid: validHour.valid, message: validHour.message },
               { valid: validTypeDate.valid, message: validTypeDate.message },
-              { valid: validAbsenceType.valid, message: validAbsenceType.message },
+              {
+                valid: validAbsenceType.valid,
+                message: validAbsenceType.message,
+              },
               { valid: validReason.valid, message: validReason.message },
             ];
             for (const { valid, message } of validations) {
@@ -732,6 +762,248 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
       }
     } catch (e) {
       console.error('handleRequestAbsence', e);
+    }
+  }
+  async handleBodyRequestAbsenceDay(dataInputs, typeRequest, emailAddress) {
+    const inputDateType = dataInputs.dateType
+      ? dataInputs.dateType[0]
+      : 'CUSTOM';
+    const dateType =
+      ERequestAbsenceDateType[
+        inputDateType as keyof typeof ERequestAbsenceDateType
+      ];
+
+    const inputAbsenceTime = dataInputs.absenceTime
+      ? dataInputs.absenceTime[0]
+      : null;
+    const absenceTime =
+      ERequestAbsenceTime[
+        inputAbsenceTime as keyof typeof ERequestAbsenceTime
+      ] || null;
+    const type =
+      ERequestAbsenceType[
+        typeRequest.toUpperCase() as keyof typeof ERequestAbsenceType
+      ];
+    const body = {
+      reason: dataInputs.reason,
+      absences: [
+        {
+          dateAt: dataInputs.dateAt,
+          dateType: dateType || ERequestAbsenceDateType.CUSTOM,
+          hour: dataInputs.hour || 0,
+          absenceTime: absenceTime || null,
+        },
+      ],
+      dayOffTypeId: dataInputs.absenceType ? dataInputs.absenceType[0] : 1,
+      type: type || ERequestAbsenceType.OFF,
+      emailAddress: emailAddress,
+    };
+    return body;
+  }
+
+  validateHour(inputNumber, typeRequest) {
+    if (typeRequest == 'offcustom' && inputNumber === '0') {
+      return { valid: false, message: 'Hour is required.' };
+    }
+    if (!inputNumber || inputNumber.trim() === '') {
+      return { valid: false, message: 'Input is required.' };
+    }
+
+    const number = parseFloat(inputNumber);
+    if (isNaN(number)) {
+      return {
+        valid: false,
+        message: 'Invalid number format. Please enter a number.',
+      };
+    }
+
+    if (number < 0 || number > 2) {
+      return { valid: false, message: 'Number must be in range 0-2.' };
+    }
+
+    return { valid: true, formattedNumber: number };
+  }
+
+  validateAndFormatDate(inputDate) {
+    const regex = /^\d{2}-\d{2}-\d{4}$/;
+    if (!regex.test(inputDate)) {
+      return { valid: false, message: 'Invalid date format. Use dd-mm-yyyy.' };
+    }
+
+    const [day, month, year] = inputDate.split('-').map(Number);
+
+    if (
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > 31 ||
+      (month === 2 && day > 29) ||
+      (month === 2 && day === 29 && !this.isLeapYear(year)) ||
+      ([4, 6, 9, 11].includes(month) && day > 30)
+    ) {
+      return { valid: false, message: 'Invalid day, month, or year.' };
+    }
+
+    const formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return { valid: true, formattedDate };
+  }
+
+  isLeapYear(year) {
+    return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  }
+
+  validDateType(inputDateType, typeRequest) {
+    if (typeRequest !== 'offcustom') {
+      if (!inputDateType)
+        return { valid: false, message: 'Date type is required.' };
+    }
+    return { valid: true, formattedDateType: inputDateType };
+  }
+
+  validReason(inputReason, typeRequest) {
+    if (typeRequest !== 'remote') {
+      if (!inputReason || inputReason.trim() === '') {
+        return { valid: false, message: 'Reason is required.' };
+      }
+    }
+    return { valid: true, formattedReason: inputReason };
+  }
+
+  sendInvalidInputRequestAbsenceDay(userId, message) {
+    const embedValidFailure: EmbedProps[] = [
+      {
+        color: '#ED4245',
+        title: `❌ ${message || 'Invalid input'}`,
+      },
+    ];
+    const messageToUser: ReplyMezonMessage = {
+      userId: userId,
+      textContent: '',
+      messOptions: { embed: embedValidFailure },
+    };
+    this.messageQueue.addMessage(messageToUser);
+  }
+
+  private temporaryStorage: Record<string, any> = {};
+  @OnEvent(Events.MessageButtonClicked)
+  async handleEventRequestW2(data) {
+    if (data.button_id !== 'request_W2_CONFIRM') return;
+    const baseUrl = process.env.W2_REQUEST_API_BASE_URL;
+    const { message_id, extra_data, button_id } = data;
+    if (!message_id || !button_id) return;
+
+    const findUnlockTsData = await this.w2RequestsRepository.findOne({
+      where: { messageId: data.message_id },
+    });
+    const replyMessage: ReplyMezonMessage = {
+      clan_id: findUnlockTsData.clanId,
+      channel_id: findUnlockTsData.channelId,
+      is_public: findUnlockTsData.isChannelPublic,
+      mode: findUnlockTsData.modeMessage,
+      msg: {
+        t: '',
+      },
+    };
+
+    if (extra_data === '') {
+      replyMessage['msg'] = {
+        t: `Missing all data !`,
+      };
+      this.messageQueue.addMessage(replyMessage);
+      return;
+    }
+
+    let parsedData;
+
+    try {
+      parsedData =
+        typeof extra_data === 'string' ? JSON.parse(extra_data) : extra_data;
+    } catch (error) {
+      replyMessage['msg'] = {
+        t: `Invalid JSON format in extra_data`,
+      };
+      this.messageQueue.addMessage(replyMessage);
+      return;
+    }
+
+    const storage = this.temporaryStorage[message_id] || {};
+
+    if (!storage.dataInputs) {
+      storage.dataInputs = {};
+    }
+
+    Object.entries(parsedData?.dataInputs || parsedData).forEach(
+      ([key, value]) => {
+        if (Array.isArray(value)) {
+          storage.dataInputs[key] = value.join(', ');
+        } else {
+          storage.dataInputs[key] = value;
+        }
+      },
+    );
+
+    this.temporaryStorage[message_id] = storage;
+
+    const existingData = this.temporaryStorage[message_id];
+
+    const additionalData = {
+      workflowDefinitionId: findUnlockTsData.workflowId,
+      email: `${findUnlockTsData.email}@ncc.asia`,
+    };
+
+    const completeData = {
+      ...additionalData,
+      ...existingData,
+    };
+
+    let idString = '';
+    if (typeof findUnlockTsData.Id === 'string') {
+      idString = findUnlockTsData.Id;
+    } else if (typeof findUnlockTsData.Id === 'object') {
+      idString = JSON.stringify(findUnlockTsData.Id);
+    }
+    const arr = idString.replace(/[{}"]/g, '').split(',');
+    const missingFields = arr.filter(
+      (field) => !completeData?.dataInputs?.[field],
+    );
+
+    if (missingFields.length > 0) {
+      replyMessage['msg'] = {
+        t: `Missing fields : ${missingFields.join(', ')}`,
+      };
+      this.messageQueue.addMessage(replyMessage);
+      return;
+    }
+
+    try {
+      const agent = new https.Agent({
+        rejectUnauthorized: false,
+      });
+      replyMessage['msg'] = {
+        t: `Sending Request....`,
+      };
+      this.messageQueue.addMessage(replyMessage);
+      const response = await axios.post(
+        `${baseUrl}/new-instance`,
+        completeData,
+        {
+          headers: {
+            'x-secret-key': process.env.W2_REQUEST_X_SECRET_KEY,
+          },
+          httpsAgent: agent,
+        },
+      );
+
+      if (response.status === 200) {
+        replyMessage['msg'] = {
+          t: `Create request successfully!`,
+        };
+        this.messageQueue.addMessage(replyMessage);
+      } else {
+        throw new Error('Unexpected response status');
+      }
+    } catch (error) {
+      console.error('Error sending form data:', error);
     }
   }
 }
