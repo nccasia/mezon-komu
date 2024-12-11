@@ -59,35 +59,16 @@ export class TimeSheetService {
     return contentObj;
   };
 
-  logTimeSheetFromDaily = async ({ content, emailAddress }) => {
-    const data = this.parseDailyMessage(content);
-    const projectCode = data.projectCode;
-    const results = [];
-    for (const task of data.tasks) {
-      try {
-        const response = await this.logTimeSheetForTask({
-          projectCode,
-          task,
-          emailAddress,
-        });
-        const result = response.data;
-        results.push(result);
-      } catch (e) {
-        console.log(e);
-        results.push({
-          success: false,
-          result:
-            e.response && e.response.message ? e.response.message : e.message,
-        });
-      }
-    }
-  };
-  logTimeSheetForTask = async ({ task, projectCode, emailAddress }) => {
-    const typeOfWork = task.type === 'ot' ? 1 : 0;
-    const hour = task.duration ? task.duration / 3600000 : 0;
-    const taskName = task.name;
+  logTimeSheetForTask = async (
+    note,
+    emailAddress,
+    projectCode,
+    typeOfWork,
+    taskName,
+    hour,
+  ) => {
     const timesheetPayload = {
-      note: task.note,
+      note,
       emailAddress,
       projectCode,
       typeOfWork,

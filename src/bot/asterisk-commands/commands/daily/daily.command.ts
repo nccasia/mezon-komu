@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable prettier/prettier */
 import { ChannelMessage } from 'mezon-sdk';
 import { EButtonMessageStyle, EMessageComponentType } from 'mezon-sdk';
@@ -99,7 +100,34 @@ export class DailyCommand extends CommandMessage {
       label: project.projectName,
       value: project.projectCode,
     }));
-
+    const getProjectFromProjectOpt =
+      findProjectByLabel(optionsProject, projectText) ||
+      optionsProject[projectMetaData.length - 1];
+    const urlGetTasks = `${process.env.TIMESHEET_API}Mezon/GetProjectsIncludingTasks?emailAddress=${ownerSenderDailyEmail}`;
+    const responseTasks = await this.axiosClientService.get(urlGetTasks, {
+      headers: {
+        securityCode: process.env.SECURITY_CODE,
+        accept: 'application/json',
+      },
+    });
+    const taskMetaData = responseTasks.data.result;
+    const getTaskByProjectCode = taskMetaData.find(
+      (p) => p.projectCode === getProjectFromProjectOpt.value,
+    );
+    const optionsTask = getTaskByProjectCode?.tasks?.map((task) => ({
+      label: task.taskName,
+      value: task.taskName,
+    }));
+    const metaDataOptions =  taskMetaData.map(project => ({
+      projectName: project.projectName,
+      projectCode: project.projectCode,
+      tasks: project.tasks.map(task => ({
+        projectTaskId: task.projectTaskId,
+        taskName: task.taskName,
+        billable: task.billable,
+        isDefault: task.isDefault,
+      }))
+    }));
     const optionTypeOfWork = [
       {
         label: 'Normal Time',
@@ -110,12 +138,14 @@ export class DailyCommand extends CommandMessage {
         value: 1,
       },
     ];
-    const getProjectFromProjectOpt =
-      findProjectByLabel(optionsProject, projectText) ||
-      optionsProject[projectMetaData.length - 1];
+
     const getTypeOfWorkFromOpt =
       findProjectByLabel(optionTypeOfWork, typeOfWorkText) ||
       optionTypeOfWork[0];
+
+
+
+      
 
     const embed: EmbedProps[] = [
       {
@@ -193,6 +223,20 @@ export class DailyCommand extends CommandMessage {
                 required: true,
                 defaultValue: Number(workingTimeText),
                 type: 'number',
+              },
+            },
+          },
+          {
+            name: 'Task:',
+            value: '',
+            inputs: {
+              id: `daily-${messageid}-task`,
+              type: EMessageComponentType.SELECT,
+              component: {
+                options: optionsTask,
+                required: true,
+                valueSelected: optionsTask[0],
+                metaDataOptions: metaDataOptions
               },
             },
           },
