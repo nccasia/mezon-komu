@@ -168,9 +168,7 @@ export class W2RequestCommand extends CommandMessage {
         components,
       },
       message,
-    );
-    console.log(message);
-    
+    );    
     const response = await this.clientService.sendMessage(dataSend);
     const dataInsert = new W2Request();
     dataInsert.messageId = response.message_id;

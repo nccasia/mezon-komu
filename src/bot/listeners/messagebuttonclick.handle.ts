@@ -1300,7 +1300,7 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
     this.temporaryStorage[message_id] = storage;
 
     const existingData = this.temporaryStorage[message_id];
-
+    
     const additionalData = {
       workflowDefinitionId: findW2requestData.workflowId,
       email: `${findW2requestData.email}@ncc.asia`,
@@ -1310,7 +1310,6 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
       ...additionalData,
       ...existingData,
     };
-
     let idString = '';
     if (typeof findW2requestData.Id === 'string') {
       idString = findW2requestData.Id;
@@ -1321,7 +1320,7 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
     const missingFields = arr.filter(
       (field) => !completeData?.dataInputs?.[field],
     );
-
+    
     if (missingFields.length > 0) {
       replyMessage['msg'] = {
         t: `Missing fields : ${missingFields.join(', ')}`,
@@ -1329,7 +1328,24 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
       this.messageQueue.addMessage(replyMessage);
       return;
     }
-
+    const parseDate = (dateString) => {
+        const [day, month, year] = dateString.split('/').map(Number);
+        return new Date(year, month - 1, day);
+      };
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const dateList = completeData.dataInputs.Dates.split(',').map((d) => parseDate(d.trim()));
+      const invalidDates = dateList.filter((date) => date < today);
+      
+      if (invalidDates.length > 0) {
+        replyMessage['msg'] = {
+          t: `Invalid dates: ${invalidDates.map((d) => d.toLocaleDateString()).join(', ')}`,
+        };
+        this.messageQueue.addMessage(replyMessage);
+        return;
+      }
     try {
       const agent = new https.Agent({
         rejectUnauthorized: false,
@@ -1363,7 +1379,19 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
         throw new Error('Unexpected response status');
       }
     } catch (error) {
-      console.error('Error sending form data:', error);
+        const textCreateRequestFailed = '```Failed to create request. Please try again later.```';
+        const msgCreateFailed = {
+          t: textCreateRequestFailed,
+          mk: [{ type: 't', s: 0, e: textCreateRequestFailed.length }],
+        };
+        await this.client.updateChatMessage(
+          findW2requestData.clanId,
+          findW2requestData.channelId,
+          findW2requestData.modeMessage,
+          findW2requestData.isChannelPublic,
+          data.message_id,
+          msgCreateFailed,
+        );
     }
   }
 
