@@ -1300,10 +1300,10 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
     this.temporaryStorage[message_id] = storage;
 
     const existingData = this.temporaryStorage[message_id];
-    
+
     const additionalData = {
       workflowDefinitionId: findW2requestData.workflowId,
-      email: `${findW2requestData.email}@ncc.asia`,
+      email: `thien.dang@ncc.asia`,
     };
 
     const completeData = {
@@ -1320,7 +1320,7 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
     const missingFields = arr.filter(
       (field) => !completeData?.dataInputs?.[field],
     );
-    
+
     if (missingFields.length > 0) {
       replyMessage['msg'] = {
         t: `Missing fields : ${missingFields.join(', ')}`,
@@ -1328,24 +1328,82 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
       this.messageQueue.addMessage(replyMessage);
       return;
     }
-    const parseDate = (dateString) => {
-        const [day, month, year] = dateString.split('/').map(Number);
+    const isValidDateFormat = (dateString) =>
+      /^\d{2}\/\d{2}\/\d{4}$/.test(dateString);
+
+    let dateList = [];
+    let invalidFormatDates = [];
+    let startDate = null;
+    let endDate = null;
+
+    if (
+      completeData.dataInputs.Dates &&
+      typeof completeData.dataInputs.Dates === 'string'
+    ) {
+      const dateStrings = completeData.dataInputs.Dates.split(',').map((date) =>
+        date.trim(),
+      );
+
+      invalidFormatDates = dateStrings.filter(
+        (date) => !isValidDateFormat(date),
+      );
+
+      dateList = dateStrings.filter(isValidDateFormat).map((date) => {
+        const [day, month, year] = date.split('/').map(Number);
         return new Date(year, month - 1, day);
-      };
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const dateList = completeData.dataInputs.Dates.split(',').map((d) => parseDate(d.trim()));
-      const invalidDates = dateList.filter((date) => date < today);
-      
-      if (invalidDates.length > 0) {
-        replyMessage['msg'] = {
-          t: `Invalid dates: ${invalidDates.map((d) => d.toLocaleDateString()).join(', ')} (earlier than today)`,
-        };
+      });
+    }
+
+    if (
+      completeData.dataInputs.StartDate &&
+      completeData.dataInputs.EndDate &&
+      typeof completeData.dataInputs.StartDate === 'string' &&
+      typeof completeData.dataInputs.EndDate === 'string'
+    ) {
+      const { StartDate, EndDate } = completeData.dataInputs;
+      if (!isValidDateFormat(StartDate)) {
+        invalidFormatDates.push(`StartDate: ${StartDate}`);
+      }
+      if (!isValidDateFormat(EndDate)) {
+        invalidFormatDates.push(`EndDate: ${EndDate}`);
+      }
+
+      if (isValidDateFormat(StartDate)) {
+        const [day, month, year] = StartDate.split('/').map(Number);
+        startDate = new Date(year, month - 1, day);
+        dateList.push(startDate);
+      }
+      if (isValidDateFormat(EndDate)) {
+        const [day, month, year] = EndDate.split('/').map(Number);
+        endDate = new Date(year, month - 1, day);
+        dateList.push(endDate);
+      }
+
+      if (startDate && endDate && endDate < startDate) {
+        replyMessage.msg.t = `Invalid range: EndDate (${endDate.toLocaleDateString()}) cannot be earlier than StartDate (${startDate.toLocaleDateString()}).`;
         this.messageQueue.addMessage(replyMessage);
         return;
       }
+    }
+
+    if (invalidFormatDates.length > 0) {
+      replyMessage.msg.t = `Invalid format dates: ${invalidFormatDates.join(', ')} (must be in dd/MM/yyyy format)`;
+      this.messageQueue.addMessage(replyMessage);
+      return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dateList.length > 0) {
+      const invalidDates = dateList.filter((date) => date < today);
+      if (invalidDates.length > 0) {
+        replyMessage.msg.t = `Invalid dates: ${invalidDates.map((d) => d.toLocaleDateString()).join(', ')} (earlier than today)`;
+        this.messageQueue.addMessage(replyMessage);
+        return;
+      }
+    }
+
     try {
       const agent = new https.Agent({
         rejectUnauthorized: false,
@@ -1379,19 +1437,20 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
         throw new Error('Unexpected response status');
       }
     } catch (error) {
-        const textCreateRequestFailed = '```Failed to create request. Please try again later.```';
-        const msgCreateFailed = {
-          t: textCreateRequestFailed,
-          mk: [{ type: 't', s: 0, e: textCreateRequestFailed.length }],
-        };
-        await this.client.updateChatMessage(
-          findW2requestData.clanId,
-          findW2requestData.channelId,
-          findW2requestData.modeMessage,
-          findW2requestData.isChannelPublic,
-          data.message_id,
-          msgCreateFailed,
-        );
+      const textCreateRequestFailed =
+        '```Failed to create request. Please try again later.```';
+      const msgCreateFailed = {
+        t: textCreateRequestFailed,
+        mk: [{ type: 't', s: 0, e: textCreateRequestFailed.length }],
+      };
+      await this.client.updateChatMessage(
+        findW2requestData.clanId,
+        findW2requestData.channelId,
+        findW2requestData.modeMessage,
+        findW2requestData.isChannelPublic,
+        data.message_id,
+        msgCreateFailed,
+      );
     }
   }
 
