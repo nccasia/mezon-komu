@@ -14,7 +14,9 @@ import {
   EmbedProps,
   EMessageComponentType,
   EMessageMode,
+  EPMButtonTaskW2,
   EPMRequestAbsenceDay,
+  EPMTaskW2Type,
   ERequestAbsenceDateType,
   ERequestAbsenceDayStatus,
   ERequestAbsenceDayType,
@@ -22,6 +24,7 @@ import {
   ERequestAbsenceType,
   EUnlockTimeSheet,
   EUnlockTimeSheetPayment,
+  EUserType,
   FFmpegImagePath,
   FileType,
   MEZON_EMBED_FOOTER,
@@ -102,6 +105,7 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
     private clientConfigService: ClientConfigService,
     @InjectRepository(W2Request)
     private w2RequestsRepository: Repository<W2Request>,
+    private clientServices: MezonClientService,
   ) {
     super(clientService);
   }
@@ -135,6 +139,13 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
         break;
       case 'w2request':
         this.handleEventRequestW2(data);
+        break;
+      case EPMButtonTaskW2.APPROVETASK:
+      case EPMButtonTaskW2.REJECTTASK:
+      case EPMButtonTaskW2.SUBMITREJECTTASK:
+      case EPMButtonTaskW2.CONFIRMPROBATIONARY:
+      case EPMButtonTaskW2.COMFIRMREGISNATION:
+        this.handleTaskW2Request(data);
         break;
       case 'PMRequestDay':
         this.handlePMRequestAbsenceDay(data);
@@ -1304,7 +1315,7 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
 
     const additionalData = {
       workflowDefinitionId: findW2requestData.workflowId,
-      email: `${findW2requestData.email}@ncc.asia`,
+      email: `thien.dang@ncc.asia`,
     };
 
     const completeData = {
@@ -1406,37 +1417,31 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
     }
 
     try {
+      const textCreateRequestSuccess = '```Create request successfully!```';
+      const msgCreateSuccess = {
+        t: textCreateRequestSuccess,
+        mk: [{ type: 't', s: 0, e: textCreateRequestSuccess.length }],
+      };
+      await this.client.updateChatMessage(
+        findW2requestData.clanId,
+        findW2requestData.channelId,
+        findW2requestData.modeMessage,
+        findW2requestData.isChannelPublic,
+        data.message_id,
+        msgCreateSuccess,
+      );
+      this.messageQueue.addMessage(replyMessage);
       const agent = new https.Agent({
         rejectUnauthorized: false,
       });
-      const response = await axios.post(
-        `${baseUrl}/new-instance`,
-        completeData,
-        {
-          headers: {
-            'x-secret-key': process.env.W2_REQUEST_X_SECRET_KEY,
-          },
-          httpsAgent: agent,
-        },
-      );
+      console.log(completeData);
 
-      if (response.status === 200) {
-        const textCreateRequestSuccess = '```Create request successfully!```';
-        const msgCreateSuccess = {
-          t: textCreateRequestSuccess,
-          mk: [{ type: 't', s: 0, e: textCreateRequestSuccess.length }],
-        };
-        await this.client.updateChatMessage(
-          findW2requestData.clanId,
-          findW2requestData.channelId,
-          findW2requestData.modeMessage,
-          findW2requestData.isChannelPublic,
-          data.message_id,
-          msgCreateSuccess,
-        );
-      } else {
-        throw new Error('Unexpected response status');
-      }
+      await axios.post(`${baseUrl}/new-instance`, completeData, {
+        headers: {
+          'x-secret-key': process.env.W2_REQUEST_X_SECRET_KEY,
+        },
+        httpsAgent: agent,
+      });
     } catch (error) {
       const textCreateRequestFailed =
         '```Failed to create request. Please try again later.```';
@@ -1452,6 +1457,437 @@ export class MessageButtonClickedEvent extends BaseHandleEvent {
         data.message_id,
         msgCreateFailed,
       );
+    }
+  }
+  private taskId: Record<string, any> = { id: '' };
+  async handleTaskW2Request(data) {
+    const findUser = await this.userRepository.find({
+      where: { userId: data.user_id, user_type: EUserType.MEZON },
+    });
+    const args = data.button_id.split('_');
+    const buttonConfirmType = args[1];
+    const titleTask = args[2];
+    if (args[3]) {
+      this.taskId = args[3];
+    }
+    if (data.button_id.split('_')[0] === EPMButtonTaskW2.APPROVETASK) {
+      if (buttonConfirmType === EPMTaskW2Type.RESIGNATION) {
+        const embed: EmbedProps[] = [
+          {
+            color: getRandomColor(),
+            title: `${titleTask} (${buttonConfirmType})`,
+            fields: [
+              {
+                name: 'Last Working Day*',
+                value: '',
+                inputs: {
+                  id: 'lastWorkingDay',
+                  type: EMessageComponentType.DATEPICKER,
+                  component: {
+                    value: '123456789',
+                  },
+                },
+              },
+              {
+                name: 'Note*',
+                value: '',
+                inputs: {
+                  id: 'note',
+                  type: EMessageComponentType.INPUT,
+                  component: {
+                    placeholder: '',
+                    required: false,
+                    textarea: true,
+                  },
+                },
+              },
+            ],
+            timestamp: new Date().toISOString(),
+            footer: MEZON_EMBED_FOOTER,
+          },
+        ];
+        const components = [
+          {
+            components: [
+              {
+                id: 'Cancel',
+                type: EMessageComponentType.BUTTON,
+                component: {
+                  label: `Cancel`,
+                  style: EButtonMessageStyle.SECONDARY,
+                },
+              },
+              {
+                id: 'ConfirmResignationRequest',
+                type: EMessageComponentType.BUTTON,
+                component: {
+                  label: `Confirm`,
+                  style: EButtonMessageStyle.SUCCESS,
+                },
+              },
+            ],
+          },
+        ];
+        const messageToUser: ReplyMezonMessage = {
+          userId: data.user_id,
+          textContent: '',
+          messOptions: { embed, components },
+        };
+        this.messageQueue.addMessage(messageToUser);
+      } else if (buttonConfirmType === EPMTaskW2Type.PROBATIONARYCONFIRMATION) {
+        const embed: EmbedProps[] = [
+          {
+            color: getRandomColor(),
+            title: `${titleTask} (${buttonConfirmType})`,
+            fields: [
+              {
+                name: 'Strength Points*',
+                value: '',
+                inputs: {
+                  id: 'strengthPoints',
+                  type: EMessageComponentType.INPUT,
+                  component: {
+                    placeholder: '',
+                    required: false,
+                    textarea: true,
+                  },
+                },
+              },
+              {
+                name: 'Weakness Points*',
+                value: '',
+                inputs: {
+                  id: 'weaknessPoints',
+                  type: EMessageComponentType.INPUT,
+                  component: {
+                    placeholder: '',
+                    required: false,
+                    textarea: true,
+                  },
+                },
+              },
+            ],
+            timestamp: new Date().toISOString(),
+            footer: MEZON_EMBED_FOOTER,
+          },
+        ];
+        const components = [
+          {
+            components: [
+              {
+                id: 'Cancel',
+                type: EMessageComponentType.BUTTON,
+                component: {
+                  label: `Cancel`,
+                  style: EButtonMessageStyle.SECONDARY,
+                },
+              },
+              {
+                id: 'ConfirmProbationaryConfirmationRequest',
+                type: EMessageComponentType.BUTTON,
+                component: {
+                  label: `Confirm`,
+                  style: EButtonMessageStyle.SUCCESS,
+                },
+              },
+            ],
+          },
+        ];
+        const messageToUser: ReplyMezonMessage = {
+          userId: data.user_id,
+          textContent: '',
+          messOptions: { embed, components },
+        };
+        this.messageQueue.addMessage(messageToUser);
+      } else {
+        try {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            'Sending Request...',
+          );
+          const payload = {
+            id: this.taskId,
+            //email: `${findUser[0].username}@ncc.asia`,
+            email: 'thien.dang@ncc.asia',
+          };
+          const response = await axios.post(
+            `${process.env.W2_REQUEST_API_BASE_URL}/approve-w2task`,
+            payload,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'x-secret-key': 'your-secret-key',
+              },
+            },
+          );
+
+          if (response.status === 200) {
+            await this.client.sendDMChannelMessage(
+              data.channel_id,
+              'Approve Task Success!',
+            );
+          }
+        } catch (error) {
+          if (error.response.data.error.code === '409') {
+            await this.client.sendDMChannelMessage(
+              data.channel_id,
+              `${error.response.data.error.message}!!`,
+            );
+          } else {
+            await this.client.sendDMChannelMessage(
+              data.channel_id,
+              `${error.message}`,
+            );
+          }
+        }
+      }
+    } else if (data.button_id.split('_')[0] === EPMButtonTaskW2.REJECTTASK) {
+      {
+        const embed: EmbedProps[] = [
+          {
+            color: getRandomColor(),
+            title: `Reject  (${titleTask} - ${buttonConfirmType})`,
+            fields: [
+              {
+                name: 'Reason*',
+                value: '',
+                inputs: {
+                  id: 'submitRejectTask',
+                  type: EMessageComponentType.INPUT,
+                  component: {
+                    id: 'submitRejectTask',
+                    placeholder: 'Reason*',
+                    required: false,
+                    textarea: true,
+                  },
+                },
+              },
+            ],
+            timestamp: new Date().toISOString(),
+            footer: MEZON_EMBED_FOOTER,
+          },
+        ];
+        const components = [
+          {
+            components: [
+              {
+                id: 'Reject',
+                type: EMessageComponentType.BUTTON,
+                component: {
+                  label: `Cancel`,
+                  style: EButtonMessageStyle.SECONDARY,
+                },
+              },
+              {
+                id: 'submitRejectTask',
+                type: EMessageComponentType.BUTTON,
+                component: {
+                  label: `Submit`,
+                  style: EButtonMessageStyle.SUCCESS,
+                },
+              },
+            ],
+          },
+        ];
+        const messageToUser: ReplyMezonMessage = {
+          userId: data.user_id,
+          textContent: '',
+          messOptions: { embed, components },
+        };
+        this.messageQueue.addMessage(messageToUser);
+      }
+    }
+    if (data.button_id === EPMButtonTaskW2.SUBMITREJECTTASK) {
+      if (!data.extra_data) {
+        await this.client.sendDMChannelMessage(
+          data.channel_id,
+          'Missing Reason Reject Task!',
+        );
+        return;
+      }
+      const extraData = JSON.parse(data.extra_data);
+      try {
+        await this.client.sendDMChannelMessage(
+          data.channel_id,
+          'Sending Request...',
+        );
+        const payload = {
+          id: this.taskId,
+          reason: extraData.submitRejectTask,
+          //  email: `${findUser[0].username}@ncc.asia`,
+          email: 'thien.dang@ncc.asia',
+        };
+        if (payload.reason === '') {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            'Missing Reason Reject Task!',
+          );
+        }
+        const response = await axios.post(
+          `${process.env.W2_REQUEST_API_BASE_URL}/reject-w2task`,
+          payload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-secret-key': 'your-secret-key',
+            },
+          },
+        );
+        if (response.status === 200) {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            'Rejected Task Success!',
+          );
+        }
+      } catch (error) {
+        if (error.response.data.error.code === '409') {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            `${error.response.data.error.message}!!`,
+          );
+        } else {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            `${error.message}`,
+          );
+        }
+      }
+    }
+    if (data.button_id === EPMButtonTaskW2.CONFIRMPROBATIONARY) {
+      if (!data.extra_data) {
+        await this.client.sendDMChannelMessage(data.channel_id, 'Missing Data');
+        return;
+      }
+      const extraData = JSON.parse(data.extra_data);
+      try {
+        await this.client.sendDMChannelMessage(
+          data.channel_id,
+          'Sending Request...',
+        );
+        let payload = {
+          dynamicActionData: JSON.stringify([
+            {
+              name: 'StrengthPoints',
+              type: 'RichText',
+              isRequired: true,
+              data: extraData.note,
+            },
+            {
+              name: 'StrengthPoints',
+              type: 'RichText',
+              isRequired: true,
+              data: extraData.note,
+            },
+          ]),
+        };
+
+        const jsonPayload = {
+          id: this.taskId,
+          dynamicActionData: payload.dynamicActionData,
+          email: 'thien.dang@ncc.asia',
+        };
+        console.log(jsonPayload);
+
+        const response = await axios.post(
+          `${process.env.W2_REQUEST_API_BASE_URL}/approve-w2task`,
+          jsonPayload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-secret-key': 'your-secret-key',
+            },
+          },
+        );
+        if (response.status === 200) {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            'Approve Task Success!',
+          );
+        }
+      } catch (error) {
+        console.log(error.response.data);
+
+        if (error.response.data.error.code === '409') {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            `${error.response.data.error.message}!!`,
+          );
+        } else {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            `${error.message}`,
+          );
+        }
+      }
+    }
+    if (data.button_id === EPMButtonTaskW2.COMFIRMREGISNATION) {
+      if (!data.extra_data) {
+        await this.client.sendDMChannelMessage(
+          data.channel_id,
+          'Missing Data !',
+        );
+        return;
+      }
+      const extraData = JSON.parse(data.extra_data);
+      try {
+        await this.client.sendDMChannelMessage(
+          data.channel_id,
+          'Sending Request...',
+        );
+        let payload = {
+          dynamicActionData: JSON.stringify([
+            {
+              name: 'LastWorkingDay',
+              type: 'dateTime',
+              isRequired: true,
+              data: extraData.lastWorkingDay,
+              defaultValue: extraData.lastWorkingDay,
+            },
+            {
+              name: 'Note',
+              type: 'RichText',
+              isRequired: true,
+              data: extraData.note,
+            },
+          ]),
+        };
+
+        const jsonPayload = {
+          id: this.taskId,
+          dynamicActionData: payload.dynamicActionData,
+          email: 'thien.dang@ncc.asia',
+        };
+        const response = await axios.post(
+          `${process.env.W2_REQUEST_API_BASE_URL}/approve-w2task`,
+          jsonPayload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-secret-key': 'your-secret-key',
+            },
+          },
+        );
+        if (response.status === 200) {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            'Approve Task Success!',
+          );
+        }
+      } catch (error) {
+        console.log(error.response.data);
+
+        if (error.response.data.error.code === '409') {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            `${error.response.data.error.message}!!`,
+          );
+        } else {
+          await this.client.sendDMChannelMessage(
+            data.channel_id,
+            `${error.message}`,
+          );
+        }
+      }
     }
   }
 

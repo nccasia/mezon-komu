@@ -153,6 +153,7 @@ import { MusicService } from './services/music.services';
 import { RequestAbsenceDayCommand } from './asterisk-commands/commands/absencedayrequest/absenceday.command';
 import { LogTimeSheetCommand } from './asterisk-commands/commands/logtimesheet/logtimesheet.command';
 import { W2RequestCommand } from './asterisk-commands/commands/w2Requests/W2Request.command';
+import { RequestTaskW2Controller } from './komubot-rest/requestTaskW2.controller';
 
 // import { CronjobSlashCommand } from "./slash-commands/cronjob.slashcommand";
 
@@ -313,6 +314,6 @@ import { W2RequestCommand } from './asterisk-commands/commands/w2Requests/W2Requ
     LogTimeSheetCommand,
     W2RequestCommand,
   ],
-  controllers: [KomubotrestController],
+  controllers: [KomubotrestController, RequestTaskW2Controller],
 })
 export class BotModule {}
