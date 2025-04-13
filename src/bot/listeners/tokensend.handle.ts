@@ -25,6 +25,9 @@ import { ReplyMezonMessage } from '../asterisk-commands/dto/replyMessage.dto';
 import { AxiosClientService } from '../services/axiosClient.services';
 import { ClientConfigService } from '../config/client-config.service';
 import { generateEmail, getRandomColor } from '../utils/helper';
+import { FStore_TransactionRepository } from '../../firebase/repositories/transactions.repository';
+import { extractBranchCodeByTaphoaRemark } from '../utils/extract-text';
+
 
 @Injectable()
 export class EventTokenSend extends BaseHandleEvent {
@@ -46,6 +49,7 @@ export class EventTokenSend extends BaseHandleEvent {
     private axiosClientService: AxiosClientService,
     private clientConfigService: ClientConfigService,
     private readonly dataSource: DataSource,
+    private readonly firestoreTransactionRepository: FStore_TransactionRepository,
   ) {
     super(clientService);
   }
@@ -55,6 +59,14 @@ export class EventTokenSend extends BaseHandleEvent {
     if (data.receiver_id !== process.env.BOT_KOMU_ID) return;
     const sender = await this.userRepository.findOne({
       where: { userId: data.sender_id },
+    });
+    await this.firestoreTransactionRepository.addTransaction({
+      transactionId: data?.transaction_id,
+      username: sender?.clan_nick || sender?.username || 'unknown',
+      amount: data.amount,
+      description: data.note,
+      timestamp: new Date(),
+      branchCode: extractBranchCodeByTaphoaRemark(data.note),
     });
     const embed: EmbedProps[] = [
       {
@@ -67,7 +79,7 @@ export class EventTokenSend extends BaseHandleEvent {
           },
           {
             name: `Sender name:`,
-            value: `${sender.clan_nick || sender.username}`,
+            value: `${sender?.clan_nick || sender?.username || 'unknown'}`,
           },
           {
             name: `Funds Transferred:`,
